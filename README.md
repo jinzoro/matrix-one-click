@@ -154,7 +154,7 @@ Follow these 10 steps to get a running Matrix homeserver.
 ### Step 1: Clone and enter the repository
 
 ```bash
-git clone https://github.com/your-org/matrix-homeserver.git /opt/matrix
+git clone https://github.com/jinzoro/matrix-one-click.git /opt/matrix
 cd /opt/matrix
 ```
 
