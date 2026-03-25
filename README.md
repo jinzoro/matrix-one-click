@@ -149,109 +149,295 @@ matrix/
 
 ## Quick Start
 
-Follow these 10 steps to get a running Matrix homeserver.
+> **Estimated time:** 15–30 minutes on a fresh VPS.
+> **Skill level:** This guide assumes you can SSH into a Linux server and edit a text file. No prior Docker or Matrix experience required.
 
-### Step 1: Clone and enter the repository
+---
+
+### Before You Begin — Checklist
+
+Work through this checklist before running a single command. Skipping any item is the most common reason setups fail.
+
+- [ ] You have a **Linux VPS** (Ubuntu 22.04 / Debian 12 recommended) with at least 2 GB RAM and 20 GB disk.
+- [ ] You have a **public IPv4 address** for the server. Find it with: `curl -4 https://ifconfig.me`
+- [ ] You own a **domain name** (e.g. `example.com`) and can edit its DNS records.
+- [ ] **Docker Engine 24+** is installed: `docker --version`
+- [ ] The **Docker Compose plugin** is installed: `docker compose version` (note: no hyphen)
+- [ ] **Ports 80 and 443 are open** in your firewall/security group. These are required for Let's Encrypt to issue your TLS certificate.
+- [ ] Ports **8448, 3478, 5349, and 49152–65535** are open if you want federation and voice/video calls. (See the Prerequisites table above.)
+
+> **Don't have Docker?** Install it with: `curl -fsSL https://get.docker.com | sh`
+
+---
+
+### Step 1 — Clone the Repository onto Your Server
+
+SSH into your server, then run:
 
 ```bash
 git clone https://github.com/jinzoro/matrix-one-click.git /opt/matrix
 cd /opt/matrix
 ```
 
-### Step 2: Configure DNS
+**What this does:** Downloads all the configuration files, scripts, and templates into `/opt/matrix`. All future commands are run from this directory.
 
-Point your domain names to the server's public IP **before** running the bootstrap. Traefik needs to obtain TLS certificates via HTTP challenge.
+> If you don't have `git`, install it first: `apt install git` (Debian/Ubuntu) or `yum install git` (RHEL/CentOS).
 
-| Hostname | Type | Value |
+---
+
+### Step 2 — Create Your DNS Records
+
+> **⚠ Do this BEFORE running bootstrap.** Traefik cannot obtain a TLS certificate until your DNS records are live and pointing at your server.
+
+Log into your domain registrar or DNS provider and create these three **A records**:
+
+| Hostname | Record Type | Value |
 |---|---|---|
-| `example.com` | A | `<your-server-ip>` |
-| `matrix.example.com` | A | `<your-server-ip>` |
-| `chat.example.com` | A | `<your-server-ip>` |
+| `example.com` | A | `your-server-ip` |
+| `matrix.example.com` | A | `your-server-ip` |
+| `chat.example.com` | A | `your-server-ip` |
 
-See [docs/DNS.md](docs/DNS.md) for full DNS configuration options.
+Replace `example.com` with your actual domain and `your-server-ip` with your server's public IPv4.
 
-### Step 3: Copy and edit the environment file
+**Wait for DNS to propagate** before continuing. This usually takes 1–5 minutes for most registrars, but can take up to an hour. Verify propagation with:
+
+```bash
+# Run these on your server — all three should return your server's IP
+dig +short example.com
+dig +short matrix.example.com
+dig +short chat.example.com
+```
+
+If all three commands return your server's IP, you are ready to proceed. If they return nothing or a wrong IP, wait a few more minutes and try again.
+
+> See [docs/DNS.md](docs/DNS.md) for a deeper explanation and optional SRV record setup.
+
+---
+
+### Step 3 — Configure Your Environment File
+
+The `.env` file is where all your personal settings live. Start by copying the example:
 
 ```bash
 cp .env.example .env
-nano .env   # or vim .env
+nano .env
 ```
 
-Fill in at minimum:
-- `MATRIX_SERVER_NAME` — your Matrix identity domain (e.g. `example.com`)
-- `SYNAPSE_HOSTNAME` — your Synapse hostname (e.g. `matrix.example.com`)
-- `ELEMENT_HOSTNAME` — your Element hostname (e.g. `chat.example.com`)
-- `SYNAPSE_PUBLIC_BASEURL` — full URL (e.g. `https://matrix.example.com`)
-- `TRAEFIK_ACME_EMAIL` — email for Let's Encrypt notifications
-- `POSTGRES_PASSWORD` — strong database password
-- `REDIS_PASSWORD` — strong Redis password
-- `COTURN_STATIC_AUTH_SECRET` — TURN server shared secret
-- `COTURN_EXTERNAL_IP` — your server's public IPv4 address (or `detect`)
+You need to fill in the following values. Everything else has safe defaults.
 
-> **Warning**: `MATRIX_SERVER_NAME` **cannot be changed after first run**. It is baked into all Matrix user IDs (`@alice:example.com`) and the signing key.
+```
+# ── The three domain names you set up in Step 2 ──────────────────────
+MATRIX_SERVER_NAME=example.com          # Your root domain — appears in user IDs
+SYNAPSE_HOSTNAME=matrix.example.com     # Where Synapse (the server) runs
+ELEMENT_HOSTNAME=chat.example.com       # Where the Element chat app runs
+SYNAPSE_PUBLIC_BASEURL=https://matrix.example.com   # Must start with https://
 
-### Step 4: Generate cryptographic secrets
+# ── Your email — used for Let's Encrypt certificate expiry notices ────
+TRAEFIK_ACME_EMAIL=you@example.com
+
+# ── Strong passwords — use something long and random ─────────────────
+POSTGRES_PASSWORD=change_me_to_a_long_random_string
+REDIS_PASSWORD=change_me_to_another_long_random_string
+COTURN_STATIC_AUTH_SECRET=change_me_to_yet_another_long_random_string
+
+# ── Your server's public IPv4 address (or leave as 'detect') ─────────
+COTURN_EXTERNAL_IP=detect
+```
+
+**Leave the `SYNAPSE_MACAROON_SECRET_KEY`, `SYNAPSE_FORM_SECRET`, and `SYNAPSE_REGISTRATION_SHARED_SECRET` fields blank.** The next step fills them in automatically.
+
+> #### ⚠ Critical Warning: MATRIX_SERVER_NAME Cannot Be Changed
+>
+> `MATRIX_SERVER_NAME` is permanently baked into every user ID on your server. If you set it to `example.com`, every user will have an ID like `@alice:example.com`. If you later change it, **all existing accounts and rooms break**. Choose this value carefully and do not change it after first boot.
+
+Save the file and exit (`Ctrl+X` → `Y` → `Enter` in nano).
+
+---
+
+### Step 4 — Generate Cryptographic Secrets
+
+Synapse needs several randomly generated secrets for security. Run:
 
 ```bash
 bash scripts/generate-secrets.sh
 ```
 
-This fills `SYNAPSE_MACAROON_SECRET_KEY`, `SYNAPSE_FORM_SECRET`, and `SYNAPSE_REGISTRATION_SHARED_SECRET` in your `.env` file.
+**What this does:** Generates three long random strings using `openssl` and writes them directly into your `.env` file. You never need to see or remember these values — they exist only to secure your installation.
 
-### Step 5: Run the bootstrap script
+Expected output:
+```
+[OK]    Generated SYNAPSE_MACAROON_SECRET_KEY
+[OK]    Generated SYNAPSE_FORM_SECRET
+[OK]    Generated SYNAPSE_REGISTRATION_SHARED_SECRET
+[OK]    Secrets written to .env
+```
+
+If you re-run this script, it will **skip** any secrets that are already set, so it is safe to run multiple times.
+
+---
+
+### Step 5 — Run the Bootstrap Script
+
+This is the main setup command. It wires everything together:
 
 ```bash
 bash bootstrap.sh
 ```
 
-Bootstrap will:
-- Validate prerequisites and configuration
-- Process all config templates
-- Generate the Synapse signing key
-- Start all containers
-- Wait for health checks to pass
+The script runs through these stages automatically:
 
-### Step 6: Verify the stack is running
+| Stage | What happens |
+|---|---|
+| Prerequisites check | Confirms Docker, envsubst, curl, and openssl are installed |
+| Config validation | Checks all required `.env` values are filled in |
+| Template processing | Converts `config/synapse/homeserver.yaml.tpl` → `data/synapse/homeserver.yaml` with your values substituted in |
+| Signing key generation | Runs Synapse once in generate mode to create `data/synapse/example.com.signing.key` |
+| Database startup | Starts PostgreSQL and waits until it is ready to accept connections |
+| Full stack startup | Starts all 7 services with `docker compose up -d` |
+| Health polling | Polls each service's health endpoint until everything is green |
+
+The whole process takes **2–5 minutes** on a typical VPS. When it finishes you will see:
+
+```
+══ Bootstrap complete ══
+
+  Element Web:  https://chat.example.com
+  Synapse API:  https://matrix.example.com
+  Federation:   https://matrix.example.com:8448
+
+  Next step: make create-admin
+```
+
+> **If bootstrap fails:** Read the error message carefully. The most common causes are:
+> - A required `.env` value is still blank or still says `CHANGE_ME`
+> - DNS records are not yet propagated (Step 2)
+> - Port 80 is blocked by a firewall (Let's Encrypt needs it)
+> - Docker is not running (`systemctl start docker`)
+
+---
+
+### Step 6 — Verify Everything Is Running
 
 ```bash
 make status
-# or
-bash scripts/healthcheck.sh
 ```
 
-### Step 7: Create your first admin user
+This runs a health check across all services and prints a PASS/FAIL report:
+
+```
+[OK]  traefik       — running, ping endpoint healthy
+[OK]  postgres      — running, accepting connections
+[OK]  redis         — running, PONG received
+[OK]  synapse       — running, /health returned 200
+[OK]  element-web   — running, HTTP 200
+[OK]  coturn        — running, port 3478 reachable
+[OK]  well-known    — running, /.well-known/matrix/client reachable
+```
+
+You can also check container status directly:
+
+```bash
+docker compose ps
+```
+
+And follow logs for any service:
+
+```bash
+make logs-synapse    # Synapse logs
+make logs-traefik    # Traefik + access logs
+make logs            # All services together
+```
+
+---
+
+### Step 7 — Create Your First Admin User
+
+User registration is **disabled by default** (a security best practice — you don't want strangers signing up on your server). Create your admin account using the built-in script:
 
 ```bash
 make create-admin
-# or
-bash scripts/create-admin-user.sh
 ```
 
-You will be prompted for a username and password.
+You will be prompted interactively:
 
-### Step 8: Access Element Web
+```
+Enter admin username: alice
+Enter password:
+Confirm password:
 
-Open your browser and navigate to `https://chat.example.com` (replace with your `ELEMENT_HOSTNAME`).
+[OK]  Admin user '@alice:example.com' created successfully.
+      Log in at: https://chat.example.com
+```
 
-Log in with the admin credentials created in Step 7.
+> **Important:** Write down your admin username and password somewhere safe. If you lose them, you can create another admin account by running `make create-admin` again.
 
-### Step 9: Verify federation (optional)
+---
+
+### Step 8 — Access Element Web
+
+Open a browser and go to `https://chat.example.com` (your `ELEMENT_HOSTNAME`).
+
+What you will see on first visit:
+
+1. Element loads and shows a login screen.
+2. The homeserver field should already show `matrix.example.com`. If it shows `matrix.org`, your `config.json` was not processed correctly — re-run `bash bootstrap.sh`.
+3. Enter the username and password from Step 7.
+4. You are now inside your own self-hosted Matrix server.
+
+To invite other people, share your homeserver URL (`https://matrix.example.com`). They can use Element Web at your `chat.example.com`, or any Matrix client (Element desktop, Element mobile, Cinny, FluffyChat, etc.) by setting the homeserver URL.
+
+---
+
+### Step 9 — Verify Federation (Optional but Recommended)
+
+Federation lets your server communicate with other Matrix homeservers, including `matrix.org`. It is enabled by default.
 
 ```bash
 make check-federation
-# or
-bash scripts/check-federation.sh
 ```
 
-You can also use the Matrix federation tester at: https://federationtester.matrix.org/
+Or use the official Matrix federation tester in your browser:
+**https://federationtester.matrix.org/** — enter your `MATRIX_SERVER_NAME` (e.g. `example.com`).
 
-### Step 10: Set up automated backups
+A passing result looks like:
+```
+[OK]  /.well-known/matrix/server  →  matrix.example.com:443
+[OK]  Federation port :8448        →  reachable
+[OK]  /_matrix/federation/v1/version  →  {"server": {"name": "Synapse", ...}}
+```
+
+If federation is failing, see [docs/FEDERATION.md](docs/FEDERATION.md) for a step-by-step debugging guide.
+
+> To **disable** federation (private server): set `SYNAPSE_FEDERATION_ENABLED=false` in `.env`, then run:
+> ```bash
+> bash scripts/init-synapse.sh && docker compose restart synapse
+> ```
+
+---
+
+### Step 10 — Set Up Automated Daily Backups
+
+Backups run as a systemd timer on the host (not inside Docker). Install it with:
 
 ```bash
 sudo cp ops/systemd/matrix-backup.service /etc/systemd/system/
 sudo cp ops/systemd/matrix-backup.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now matrix-backup.timer
+```
+
+Verify the timer is scheduled:
+
+```bash
+sudo systemctl status matrix-backup.timer
+```
+
+Backups run daily at 03:00 and are saved to `backups/<timestamp>/`. Each backup includes a PostgreSQL dump, your Synapse signing key, and the media store. See [docs/BACKUPS.md](docs/BACKUPS.md) for retention, restore instructions, and off-site backup recommendations.
+
+You can also run a backup manually at any time:
+
+```bash
+make backup
 ```
 
 ---

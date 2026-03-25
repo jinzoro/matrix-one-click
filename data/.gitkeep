@@ -1,0 +1,4 @@
+# This directory holds runtime data generated at bootstrap time.
+# ALL contents are gitignored (see .gitignore).
+# The subdirectory structure is created by bootstrap.sh.
+# This file ensures the parent directory exists in git.
