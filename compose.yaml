@@ -1,0 +1,304 @@
+# ============================================================
+# Matrix Homeserver Stack — Docker Compose
+# ============================================================
+# Usage:
+#   docker compose up -d          — start all services
+#   docker compose down           — stop and remove containers
+#   docker compose logs -f synapse — follow synapse logs
+#
+# All configuration is driven by .env (copy from .env.example).
+# Run bootstrap.sh before first start to process templates.
+# ============================================================
+
+name: matrix
+
+services:
+
+  # ----------------------------------------------------------
+  # TRAEFIK — Reverse proxy, TLS termination, Let's Encrypt
+  # ----------------------------------------------------------
+  traefik:
+    image: traefik:v3.1
+    container_name: matrix-traefik
+    restart: unless-stopped
+    command:
+      # API / Dashboard
+      - --api.dashboard=${TRAEFIK_DASHBOARD_ENABLED:-false}
+      - --api.insecure=false
+      # Ping (health check endpoint)
+      - --ping=true
+      - --ping.entrypoint=web
+      # Logging
+      - --log.level=INFO
+      - --log.filepath=/var/log/traefik/traefik.log
+      - --accesslog=true
+      - --accesslog.filepath=/var/log/traefik/access.log
+      - --accesslog.bufferingsize=100
+      # Docker provider
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=matrix-proxy
+      # File provider for dynamic config (middlewares, TLS options)
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+      # Entrypoints
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.web.http.redirections.entrypoint.permanent=true
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls=true
+      - --entrypoints.websecure.http.tls.certresolver=letsencrypt
+      - --entrypoints.matrix-federation.address=:8448
+      # Let's Encrypt ACME
+      - --certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8448:8448"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config/traefik/dynamic:/etc/traefik/dynamic:ro
+      - traefik-acme:/acme
+      - traefik-logs:/var/log/traefik
+    networks:
+      - proxy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:80/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      # Traefik dashboard router (only active when TRAEFIK_DASHBOARD_ENABLED=true)
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`${TRAEFIK_DASHBOARD_HOSTNAME:-traefik.example.com}`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.middlewares=dashboard-auth@file"
+
+  # ----------------------------------------------------------
+  # POSTGRESQL — Primary database
+  # ----------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: matrix-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-synapse}
+      POSTGRES_USER: ${POSTGRES_USER:-synapse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Synapse requires C locale for correct Unicode handling
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./config/postgres/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-synapse} -d ${POSTGRES_DB:-synapse}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+
+  # ----------------------------------------------------------
+  # REDIS — Worker coordination and caching
+  # ----------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: matrix-redis
+    restart: unless-stopped
+    # Password is passed via command so redis.conf does not need to contain it.
+    # redis.conf handles all other settings (persistence, memory limits, etc.)
+    command: redis-server /etc/redis/redis.conf --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - ./config/redis/redis.conf:/etc/redis/redis.conf:ro
+      - redis-data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD} ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+
+  # ----------------------------------------------------------
+  # SYNAPSE — Matrix homeserver
+  # ----------------------------------------------------------
+  synapse:
+    image: matrixdotorg/synapse:latest
+    container_name: matrix-synapse
+    restart: unless-stopped
+    environment:
+      SYNAPSE_CONFIG_PATH: /data/homeserver.yaml
+    volumes:
+      - ./data/synapse:/data
+      - synapse-media:/data/media_store
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - proxy
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsSL http://localhost:8008/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "traefik.enable=true"
+
+      # ── Client API router (/_matrix and /_synapse paths) ──────────────────
+      - "traefik.http.routers.synapse-client.rule=Host(`${SYNAPSE_HOSTNAME}`) && (PathPrefix(`/_matrix`) || PathPrefix(`/_synapse`))"
+      - "traefik.http.routers.synapse-client.entrypoints=websecure"
+      - "traefik.http.routers.synapse-client.tls=true"
+      - "traefik.http.routers.synapse-client.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.synapse-client.service=synapse"
+      - "traefik.http.routers.synapse-client.middlewares=security-headers@file"
+
+      # ── Federation router (port 8448) ──────────────────────────────────────
+      - "traefik.http.routers.synapse-federation.rule=Host(`${SYNAPSE_HOSTNAME}`) && PathPrefix(`/_matrix`)"
+      - "traefik.http.routers.synapse-federation.entrypoints=matrix-federation"
+      - "traefik.http.routers.synapse-federation.tls=true"
+      - "traefik.http.routers.synapse-federation.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.synapse-federation.service=synapse"
+
+      # ── Service definition ─────────────────────────────────────────────────
+      - "traefik.http.services.synapse.loadbalancer.server.port=8008"
+
+  # ----------------------------------------------------------
+  # ELEMENT WEB — Matrix web client
+  # ----------------------------------------------------------
+  element-web:
+    image: vectorim/element-web:latest
+    container_name: matrix-element-web
+    restart: unless-stopped
+    volumes:
+      - ./config/element/config.json:/app/config.json:ro
+    networks:
+      - proxy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "traefik.enable=true"
+
+      # ── Element router ─────────────────────────────────────────────────────
+      - "traefik.http.routers.element.rule=Host(`${ELEMENT_HOSTNAME}`)"
+      - "traefik.http.routers.element.entrypoints=websecure"
+      - "traefik.http.routers.element.tls=true"
+      - "traefik.http.routers.element.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.element.service=element"
+      - "traefik.http.routers.element.middlewares=security-headers@file"
+
+      # ── Service definition ─────────────────────────────────────────────────
+      - "traefik.http.services.element.loadbalancer.server.port=80"
+
+  # ----------------------------------------------------------
+  # COTURN — TURN/STUN server for voice and video calls
+  # NOTE: Uses host network mode — required for UDP media relay
+  # to work correctly. Coturn must see the real source IP of clients.
+  # ----------------------------------------------------------
+  coturn:
+    image: coturn/coturn:4.6
+    container_name: matrix-coturn
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./data/coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - coturn-data:/var/lib/coturn
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 ${COTURN_PORT:-3478} || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ----------------------------------------------------------
+  # WELL-KNOWN — Serves /.well-known/matrix/ delegation files
+  # NOTE: Only needed if MATRIX_SERVER_NAME != SYNAPSE_HOSTNAME.
+  # For example: identity domain is example.com but Synapse is
+  # at matrix.example.com. Without this, remote servers cannot
+  # discover your homeserver via well-known delegation.
+  # ----------------------------------------------------------
+  well-known:
+    image: nginx:1.27-alpine
+    container_name: matrix-well-known
+    restart: unless-stopped
+    volumes:
+      - ./config/well-known/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./data/well-known:/usr/share/nginx/html/.well-known/matrix:ro
+    networks:
+      - proxy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:80/.well-known/matrix/client || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "traefik.enable=true"
+
+      # ── Well-known router ──────────────────────────────────────────────────
+      - "traefik.http.routers.well-known.rule=Host(`${MATRIX_SERVER_NAME}`) && PathPrefix(`/.well-known/matrix`)"
+      - "traefik.http.routers.well-known.entrypoints=websecure"
+      - "traefik.http.routers.well-known.tls=true"
+      - "traefik.http.routers.well-known.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.well-known.service=well-known"
+
+      # ── Service definition ─────────────────────────────────────────────────
+      - "traefik.http.services.well-known.loadbalancer.server.port=80"
+
+# ============================================================
+# VOLUMES
+# ============================================================
+volumes:
+  postgres-data:
+    name: matrix-postgres-data
+  redis-data:
+    name: matrix-redis-data
+  synapse-media:
+    name: matrix-synapse-media
+  traefik-acme:
+    name: matrix-traefik-acme
+  traefik-logs:
+    name: matrix-traefik-logs
+  coturn-data:
+    name: matrix-coturn-data
+
+# ============================================================
+# NETWORKS
+# ============================================================
+networks:
+  # proxy: external-facing network; Traefik + web services
+  proxy:
+    name: matrix-proxy
+
+  # backend: internal-only network; databases not exposed to host
+  backend:
+    name: matrix-backend
+    internal: true

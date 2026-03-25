@@ -1,0 +1,36 @@
+# ============================================================
+# Matrix Homeserver Backup Timer
+# ============================================================
+# Installation:
+#   sudo cp ops/systemd/matrix-backup.service /etc/systemd/system/
+#   sudo cp ops/systemd/matrix-backup.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now matrix-backup.timer
+#
+# Check status:
+#   sudo systemctl status matrix-backup.timer
+#   sudo systemctl list-timers matrix-backup.timer
+#   sudo journalctl -u matrix-backup.service --since today
+#
+# Run backup manually (test the service):
+#   sudo systemctl start matrix-backup.service
+# ============================================================
+
+[Unit]
+Description=Matrix Homeserver Backup Timer
+Documentation=https://github.com/your-org/matrix-homeserver/blob/main/docs/BACKUPS.md
+Requires=matrix-backup.service
+
+[Timer]
+# Run daily at 03:00 AM
+OnCalendar=*-*-* 03:00:00
+
+# Add up to 10 minutes of random delay to avoid thundering herd
+# if multiple servers are backed up to the same destination
+RandomizedDelaySec=600
+
+# If a backup was missed (e.g., server was off), run it when the timer activates
+Persistent=true
+
+[Install]
+WantedBy=timers.target

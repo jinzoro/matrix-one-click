@@ -1,0 +1,39 @@
+{
+    "default_server_config": {
+        "m.homeserver": {
+            "base_url": "SYNAPSE_PUBLIC_BASEURL_PLACEHOLDER",
+            "server_name": "MATRIX_SERVER_NAME_PLACEHOLDER"
+        },
+        "m.identity_server": {
+            "base_url": "https://vector.im"
+        }
+    },
+    "brand": "Element",
+    "default_theme": "light",
+    "room_directory": {
+        "servers": [
+            "MATRIX_SERVER_NAME_PLACEHOLDER",
+            "matrix.org"
+        ]
+    },
+    "show_labs_settings": false,
+    "features": {},
+    "default_federate": true,
+    "default_country_code": "US",
+    "bug_report_endpoint_url": null,
+    "uisi_autorageshake_app": null,
+    "map_style_url": null,
+    "setting_defaults": {
+        "breadcrumbs": true,
+        "UIFeature.shareQRCode": true,
+        "UIFeature.shareSocial": true,
+        "UIFeature.identityServer": true,
+        "UIFeature.thirdPartyId": true,
+        "UIFeature.registration": true,
+        "UIFeature.passwordReset": true,
+        "UIFeature.deactivate": true,
+        "UIFeature.advancedSettings": true,
+        "UIFeature.roomHistorySettings": true,
+        "UIFeature.TimelineEnableRelativeDates": true
+    }
+}

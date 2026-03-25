@@ -1,0 +1,77 @@
+http:
+  middlewares:
+
+    # ──────────────────────────────────────────────────────────
+    # security-headers: Applied to all web-facing routes.
+    # Provides HSTS, CSP, framing protection, and other headers.
+    # ──────────────────────────────────────────────────────────
+    security-headers:
+      headers:
+        # HTTP Strict Transport Security (2 years)
+        stsSeconds: 63072000
+        stsIncludeSubdomains: true
+        stsPreload: true
+
+        # Prevent clickjacking — deny framing from other origins
+        frameDeny: true
+        customFrameOptionsValue: "SAMEORIGIN"
+
+        # Prevent MIME sniffing
+        contentTypeNosniff: true
+
+        # XSS protection (legacy header, still useful for older browsers)
+        browserXssFilter: true
+
+        # Referrer policy
+        referrerPolicy: "strict-origin-when-cross-origin"
+
+        # Content Security Policy
+        # Permissive for Element Web which uses inline scripts/styles.
+        # Tighten this if you don't need third-party content.
+        contentSecurityPolicy: >-
+          default-src 'self';
+          script-src 'self' 'unsafe-inline' 'unsafe-eval';
+          style-src 'self' 'unsafe-inline';
+          img-src 'self' data: https: blob:;
+          font-src 'self' data:;
+          connect-src 'self' https: wss:;
+          media-src 'self' https: blob:;
+          worker-src 'self' blob:;
+          frame-ancestors 'none';
+
+        # Remove identifying server headers
+        customResponseHeaders:
+          Server: ""
+          X-Powered-By: ""
+
+    # ──────────────────────────────────────────────────────────
+    # synapse-ratelimit: Rate limiting for Synapse API endpoints.
+    # Attach to synapse-client router if you want Traefik-level
+    # rate limiting in addition to Synapse's built-in rate limits.
+    # ──────────────────────────────────────────────────────────
+    synapse-ratelimit:
+      rateLimit:
+        average: 100
+        burst: 200
+        period: 1s
+
+    # ──────────────────────────────────────────────────────────
+    # dashboard-auth: BasicAuth for the Traefik dashboard.
+    # Populate TRAEFIK_DASHBOARD_BASICAUTH in .env.
+    # Generate credentials: htpasswd -nb admin yourpassword
+    # Note: Dollar signs in the hash must be doubled in .env ($$).
+    # ──────────────────────────────────────────────────────────
+    dashboard-auth:
+      basicAuth:
+        users:
+          - "${TRAEFIK_DASHBOARD_BASICAUTH}"
+
+    # ──────────────────────────────────────────────────────────
+    # redirect-www: Redirect www.example.com → example.com
+    # Attach to a router for the www subdomain if needed.
+    # ──────────────────────────────────────────────────────────
+    redirect-www:
+      redirectRegex:
+        regex: "^https://www\\.(.*)"
+        replacement: "https://${1}"
+        permanent: true

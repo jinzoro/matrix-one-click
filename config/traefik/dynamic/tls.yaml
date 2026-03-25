@@ -1,0 +1,31 @@
+tls:
+  options:
+    # ──────────────────────────────────────────────────────────
+    # default: Applied to all TLS connections unless overridden.
+    # TLS 1.2 minimum with strong cipher suites.
+    # Compatible with all modern browsers and Matrix clients.
+    # ──────────────────────────────────────────────────────────
+    default:
+      minVersion: VersionTLS12
+      sniStrict: true
+      cipherSuites:
+        # ECDHE + AES-128-GCM (TLS 1.2)
+        - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+        # ECDHE + AES-256-GCM (TLS 1.2)
+        - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+        # ECDHE + ChaCha20-Poly1305 (TLS 1.2, preferred on mobile)
+        - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305
+        - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
+      # TLS 1.3 cipher suites are negotiated automatically;
+      # they cannot be configured in Traefik (handled by Go's crypto/tls).
+
+    # ──────────────────────────────────────────────────────────
+    # modern: TLS 1.3 only — maximum security.
+    # Use this on routers where you can guarantee client support.
+    # Attach with: tls.options=modern@file in a router label.
+    # ──────────────────────────────────────────────────────────
+    modern:
+      minVersion: VersionTLS13
+      sniStrict: true

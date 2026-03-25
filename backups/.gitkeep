@@ -1,0 +1,4 @@
+# This directory stores Matrix homeserver backups.
+# It is intentionally empty in the repository.
+# Backups are created by running: bash scripts/backup.sh (or: make backup)
+# This file ensures the directory exists in git while the contents are gitignored.

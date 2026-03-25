@@ -1,0 +1,3 @@
+{
+    "m.server": "%%SYNAPSE_HOSTNAME%%:443"
+}

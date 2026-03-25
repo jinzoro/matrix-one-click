@@ -1,0 +1,11 @@
+{
+    "m.homeserver": {
+        "base_url": "%%SYNAPSE_PUBLIC_BASEURL%%"
+    },
+    "m.identity_server": {
+        "base_url": "https://vector.im"
+    },
+    "org.matrix.msc3575.proxy": {
+        "url": "%%SYNAPSE_PUBLIC_BASEURL%%"
+    }
+}

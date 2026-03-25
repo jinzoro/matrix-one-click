@@ -1,0 +1,21 @@
+[Unit]
+Description=Matrix Homeserver Backup
+Documentation=https://github.com/your-org/matrix-homeserver/blob/main/docs/BACKUPS.md
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+# Update WorkingDirectory if you installed to a different path
+WorkingDirectory=/opt/matrix
+ExecStart=/bin/bash /opt/matrix/scripts/backup.sh
+StandardOutput=journal
+StandardError=journal
+# Send exit code to journal
+SyslogIdentifier=matrix-backup
+
+# Environment overrides (optional)
+# Uncomment to customize backup behavior:
+# Environment=BACKUP_RETENTION_DAYS=30
+# Environment=BACKUP_ENV=false

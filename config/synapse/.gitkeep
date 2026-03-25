@@ -1,0 +1,4 @@
+# This file ensures the config/synapse/ directory is tracked in git.
+# The actual configuration templates in this directory are committed:
+#   homeserver.yaml.tpl  — Synapse homeserver configuration template
+#   log.config.tpl       — Synapse logging configuration template

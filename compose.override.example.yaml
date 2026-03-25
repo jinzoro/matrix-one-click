@@ -1,0 +1,122 @@
+# ============================================================
+# Docker Compose Override — Development / Debug Configuration
+# ============================================================
+# This file provides development and debugging overrides.
+# It is NOT used automatically. To use it:
+#
+#   docker compose -f compose.yaml -f compose.override.example.yaml up -d
+#
+# Or copy it to compose.override.yaml and it will be loaded automatically:
+#
+#   cp compose.override.example.yaml compose.override.yaml
+#   docker compose up -d
+#
+# WARNING: Do NOT use these settings in production.
+# - Traefik insecure mode exposes the dashboard without auth
+# - Exposed database ports allow direct connections from localhost
+# ============================================================
+
+name: matrix
+
+services:
+
+  # ----------------------------------------------------------
+  # TRAEFIK — Enable dashboard with insecure mode for local debugging
+  # ----------------------------------------------------------
+  traefik:
+    command:
+      # Override: enable API and dashboard in insecure mode for local access
+      - --api.dashboard=true
+      - --api.insecure=true
+      # Set DEBUG log level for verbose output
+      - --log.level=DEBUG
+      - --accesslog=true
+      - --accesslog.bufferingsize=0
+      # Docker provider (same as production)
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=matrix-proxy
+      # File provider
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+      # Entrypoints (same as production)
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.web.http.redirections.entrypoint.permanent=true
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls=true
+      - --entrypoints.websecure.http.tls.certresolver=letsencrypt
+      - --entrypoints.matrix-federation.address=:8448
+      # Let's Encrypt — use staging in development to avoid rate limits
+      - --certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      # Uncomment to use Let's Encrypt staging (avoids rate limits during testing):
+      # - --certificatesresolvers.letsencrypt.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory
+    ports:
+      # Expose Traefik dashboard on localhost:8080 only
+      - "127.0.0.1:8080:8080"
+
+  # ----------------------------------------------------------
+  # POSTGRES — Expose port for local debugging with psql or pgAdmin
+  # ----------------------------------------------------------
+  postgres:
+    ports:
+      # Expose PostgreSQL only on localhost — never expose to 0.0.0.0 in dev
+      - "127.0.0.1:5432:5432"
+
+  # ----------------------------------------------------------
+  # REDIS — Expose port for local debugging with redis-cli
+  # ----------------------------------------------------------
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  # ----------------------------------------------------------
+  # SYNAPSE — Enable DEBUG logging for development
+  # ----------------------------------------------------------
+  synapse:
+    environment:
+      SYNAPSE_CONFIG_PATH: /data/homeserver.yaml
+      # Enable verbose logging via environment override
+      # (you may also edit data/synapse/log.config directly)
+      SYNAPSE_LOG_LEVEL: DEBUG
+
+  # ----------------------------------------------------------
+  # PGADMIN — Web-based PostgreSQL administration UI
+  # Only for development; remove before going to production
+  # ----------------------------------------------------------
+  pgadmin:
+    image: adminer:latest
+    container_name: matrix-adminer
+    restart: unless-stopped
+    ports:
+      # Access Adminer at http://localhost:8081
+      - "127.0.0.1:8081:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: pepa-linha
+    networks:
+      - backend
+    depends_on:
+      - postgres
+
+# ============================================================
+# Additional volumes needed by override services
+# ============================================================
+volumes:
+  postgres-data: {}
+  redis-data: {}
+  synapse-media: {}
+  traefik-acme: {}
+  traefik-logs: {}
+  coturn-data: {}
+
+networks:
+  proxy:
+    name: matrix-proxy
+  backend:
+    name: matrix-backend
+    internal: true
