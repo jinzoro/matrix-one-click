@@ -67,6 +67,17 @@ http:
           - "${TRAEFIK_DASHBOARD_BASICAUTH}"
 
     # ──────────────────────────────────────────────────────────
+    # admin-auth: BasicAuth gate for Synapse Admin.
+    # Populate SYNAPSE_ADMIN_BASICAUTH in .env.
+    # Generate credentials: htpasswd -nb admin yourpassword
+    # Note: Dollar signs in the hash must be doubled in .env ($$).
+    # ──────────────────────────────────────────────────────────
+    admin-auth:
+      basicAuth:
+        users:
+          - "${SYNAPSE_ADMIN_BASICAUTH}"
+
+    # ──────────────────────────────────────────────────────────
     # redirect-www: Redirect www.example.com → example.com
     # Attach to a router for the www subdomain if needed.
     # ──────────────────────────────────────────────────────────

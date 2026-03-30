@@ -217,6 +217,39 @@ services:
       - "traefik.http.services.element.loadbalancer.server.port=80"
 
   # ----------------------------------------------------------
+  # SYNAPSE ADMIN — Web UI for managing users, rooms, and media
+  # Access is protected by BasicAuth (SYNAPSE_ADMIN_BASICAUTH).
+  # The SPA talks directly from the browser to Synapse's API.
+  # ----------------------------------------------------------
+  synapse-admin:
+    image: awesometechnologies/synapse-admin:latest
+    container_name: matrix-synapse-admin
+    restart: unless-stopped
+    networks:
+      - proxy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "traefik.enable=true"
+
+      # ── Synapse Admin router ───────────────────────────────────────────────
+      - "traefik.http.routers.synapse-admin.rule=Host(`${SYNAPSE_ADMIN_HOSTNAME}`)"
+      - "traefik.http.routers.synapse-admin.entrypoints=websecure"
+      - "traefik.http.routers.synapse-admin.tls=true"
+      - "traefik.http.routers.synapse-admin.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.synapse-admin.service=synapse-admin"
+      - "traefik.http.routers.synapse-admin.middlewares=admin-auth@file,security-headers@file"
+
+      # ── Service definition ─────────────────────────────────────────────────
+      - "traefik.http.services.synapse-admin.loadbalancer.server.port=80"
+
+  # ----------------------------------------------------------
   # COTURN — TURN/STUN server for voice and video calls
   # NOTE: Uses host network mode — required for UDP media relay
   # to work correctly. Coturn must see the real source IP of clients.
