@@ -1,8 +1,36 @@
 # matrix-homeserver — Production Matrix/Element Self-Hosted Stack
 
-[![Docker](https://img.shields.io/badge/Docker-24%2B-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/)
-[![Matrix](https://img.shields.io/badge/Matrix-Synapse-000000?logo=matrix&logoColor=white)](https://matrix.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+<div align="center">
+
+<!-- Stack -->
+[![Synapse](https://img.shields.io/badge/Synapse-latest-000000?style=for-the-badge&logo=matrix&logoColor=white)](https://github.com/element-hq/synapse)
+[![Element Web](https://img.shields.io/badge/Element_Web-latest-0DBD8B?style=for-the-badge&logo=element&logoColor=white)](https://github.com/element-hq/element-web)
+[![Traefik](https://img.shields.io/badge/Traefik-v3.1-24A1C1?style=for-the-badge&logo=traefikproxy&logoColor=white)](https://traefik.io/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-7-DC382D?style=for-the-badge&logo=redis&logoColor=white)](https://redis.io/)
+
+<!-- Infrastructure -->
+[![Docker](https://img.shields.io/badge/Docker-24%2B-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://docs.docker.com/)
+[![Nginx](https://img.shields.io/badge/Nginx-1.27-009639?style=for-the-badge&logo=nginx&logoColor=white)](https://nginx.org/)
+[![Let's Encrypt](https://img.shields.io/badge/Let's_Encrypt-ACME-003A70?style=for-the-badge&logo=letsencrypt&logoColor=white)](https://letsencrypt.org/)
+[![Linux](https://img.shields.io/badge/Platform-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://www.linux.org/)
+[![Shell](https://img.shields.io/badge/Scripted-Bash-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white)](https://www.gnu.org/software/bash/)
+
+<!-- Features -->
+[![TLS](https://img.shields.io/badge/TLS-1.2%2B_enforced-brightgreen?style=for-the-badge&logo=openssl&logoColor=white)](docs/SECURITY.md)
+[![Federation](https://img.shields.io/badge/Matrix_Federation-Ready-7B68EE?style=for-the-badge&logo=matrix&logoColor=white)](docs/FEDERATION.md)
+[![TURN/STUN](https://img.shields.io/badge/TURN%2FSTUN-Coturn-0078D4?style=for-the-badge&logo=webrtc&logoColor=white)](https://github.com/coturn/coturn)
+[![Admin UI](https://img.shields.io/badge/Admin_UI-Synapse_Admin-FF6B35?style=for-the-badge&logo=adminmodo&logoColor=white)](https://github.com/Awesome-Technologies/synapse-admin)
+[![Registration](https://img.shields.io/badge/Registration-Closed_by_default-red?style=for-the-badge&logo=shield&logoColor=white)](docs/SECURITY.md)
+
+<!-- Project -->
+[![License](https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge)](LICENSE)
+[![Maintained](https://img.shields.io/badge/Maintained-Yes-22C55E?style=for-the-badge)](https://github.com/jinzoro/matrix-one-click)
+[![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-A855F7?style=for-the-badge&logo=github&logoColor=white)](https://github.com/jinzoro/matrix-one-click/pulls)
+[![Self Hosted](https://img.shields.io/badge/Self--Hosted-100%25-F59E0B?style=for-the-badge&logo=homeassistant&logoColor=white)](https://github.com/jinzoro/matrix-one-click)
+[![One Click](https://img.shields.io/badge/Bootstrap-One_Command-EC4899?style=for-the-badge&logo=rocket&logoColor=white)](bootstrap.sh)
+
+</div>
 
 ## Overview
 
